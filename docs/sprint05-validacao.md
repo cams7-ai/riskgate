@@ -4,7 +4,7 @@ Validação executada em **05/11/2026**, no diretório do projeto, com
 **Python 3.12.14**. O projeto declara suporte a Python 3.11 ou superior;
 nesta execução não foi usada uma segunda versão de Python.
 
-## Roteiro e resultados observados
+## Validação inicial — 05/11/2026
 
 Os comandos abaixo foram efetivamente executados. Os cenários conferem seus
 resultados antes de concluir; rejeições e erros previstos são parte da demonstração.
@@ -81,6 +81,72 @@ O contrato JSON foi exercitado com campos ausentes/inesperados, chaves duplicada
 versões inválidas (inclusive bool e 1.0), constantes NaN/Infinity, strings não
 finitas/malformadas, números sem string, booleanos incorretos, datas sem fuso,
 posição desconhecida e arquivo ausente.
+
+## Revalidação dos relatórios — 06/11/2026
+
+Os relatórios agora possuem três formatos: `texto` (padrão), `json` e `html`.
+Para reproduzir a exportação, execute na raiz do projeto, em uma mesma sessão Bash:
+
+```bash
+relatorios_dir=$(mktemp -d)
+
+for cenario in a b c d e f; do
+  python -m riskgate --cenario "$cenario" --formato texto > "$relatorios_dir/cenario-$cenario.txt"
+  python -m riskgate --cenario "$cenario" --formato json > "$relatorios_dir/cenario-$cenario.json"
+  python -m riskgate --cenario "$cenario" --formato html > "$relatorios_dir/cenario-$cenario.html"
+done
+
+python -m riskgate --formato texto > "$relatorios_dir/completo.txt"
+python -m riskgate --formato json > "$relatorios_dir/completo.json"
+python -m riskgate --formato html > "$relatorios_dir/completo.html"
+
+printf 'Relatórios salvos em: %s\n' "$relatorios_dir"
+ls -lh "$relatorios_dir"
+```
+
+Nesta revalidação, os comandos de geração foram executados com verificação do
+código de saída após cada chamada (`|| exit "$?"`), usando Python 3.12.14.
+O diretório criado foi `/tmp/tmp.P4I2Uuln5d`; esse é apenas o caminho observado,
+não um caminho fixo a ser reutilizado. Cada execução de `mktemp -d` gera outro.
+
+| Verificação executada | Resultado observado |
+| --- | --- |
+| Seis cenários × três formatos | 18 arquivos gerados; todas as chamadas retornaram 0 |
+| Execução completa × três formatos | 3 arquivos gerados; todas as chamadas retornaram 0 |
+| Contagem e leitura com `pathlib` | 21 arquivos não vazios: 7 TXT, 7 JSON e 7 HTML |
+| Leitura dos sete JSON com `json.loads` | JSON válido; cenário individual correto e sequência A–F no completo |
+| Conteúdo dos sete TXT | Cabeçalho do relatório detalhado presente |
+| Conteúdo dos sete HTML | Documento HTML e indicação de verificações concluídas presentes |
+| `python -m unittest discover -s tests -v` | 33 testes passaram (OK) |
+| `git diff --check` | Nenhum erro de whitespace reportado |
+
+A suíte cobre os relatórios dos seis cenários, cálculos e rejeições no texto,
+navegação interna do HTML, identificação da candidata rejeitada, escape de
+conteúdo HTML e códigos de saída no modo arquivo. A compatibilidade do JSON é
+verificada com `--formato json`; consumidores da antiga saída padrão precisam
+informar essa opção.
+
+`mktemp -d` cria a pasta temporária; o shell grava os relatórios com `>`.
+O programa não cria diretórios automaticamente, e stderr continua no terminal.
+Para conservar os relatórios, copie os arquivos para um local permanente antes
+da limpeza do diretório temporário pelo sistema. O HTML pode ser aberto no
+navegador e salvo como PDF pela opção de impressão.
+
+### Memória de cálculo HTML — 06/11/2026
+
+Após a inclusão das fórmulas e legendas, `python -m unittest discover -s tests -v`
+foi executado novamente: **38 testes passaram**. As novas verificações conferem:
+
+- Substituição das entradas de B, conversão de percentuais para frações, unidades e desigualdade de risco.
+- Filtro mínimo não atendido em C, identificação da candidata rejeitada e ausência de dimensionamento para saldo zero ou entradas inválidas.
+- Distinção entre ajuste inicial por floor e quantidade final após correção decimal.
+- Perda diária e drawdown de E, incluindo base diária indisponível sem divisão por zero.
+- Uso do preço executado de F e diferenças da perda realizada em relação ao orçamento e ao planejado.
+
+Foi gerado um relatório completo em `/tmp/riskgate-calculos.html`. A memória de
+cálculo de B foi renderizada no Chrome headless e sua captura foi inspecionada:
+fórmulas, substituições numéricas e legendas ficaram legíveis no layout desktop.
+Os caminhos em `/tmp` são artefatos temporários desta execução.
 
 ## Limitações e pendências
 

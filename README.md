@@ -17,6 +17,7 @@ python -m riskgate --cenario c
 python -m riskgate --cenario d
 python -m riskgate --cenario e
 python -m riskgate --cenario f
+python -m riskgate --cenario c --formato json
 python -m riskgate --arquivo data/exemplos/avaliacao.json
 python -m riskgate --arquivo data/exemplos/rejeitada.json
 python -m riskgate --arquivo data/exemplos/invalida.json
@@ -24,9 +25,68 @@ python -m riskgate --help
 python -m unittest discover -s tests -v
 ```
 
-O terminal apresenta JSON legível com unidades explícitas, decimais como strings
-e datas UTC. Sem seleção, executa A–F nessa ordem em sessões independentes.
+O terminal apresenta por padrão um relatório detalhado em texto, com entradas,
+decisão, restrições, dimensionamento e interpretação por caso. Os números usam
+vírgula decimal e unidades explícitas; horários mantêm seu fuso UTC.
+Para salvar os relatórios em um diretório temporário, use o exemplo abaixo.
+Sem seleção, executa A–F nessa ordem em sessões independentes.
+Use `--formato json` para obter a saída estruturada com decimais como strings
+e datas UTC, inclusive no modo `--arquivo`. O JSON continua disponível para
+scripts; consumidores da antiga saída padrão devem acrescentar essa opção.
+Uma terceira opção, `--formato html`, gera um documento independente, sem acesso
+à rede ou dependências externas, com resumo de decisões, navegação por cenário,
+indicadores, tabelas e interpretação por caso. Redirecione a saída para `.html`
+e abra o arquivo no navegador. Para obter um PDF, use Imprimir → Salvar como PDF
+no navegador; o relatório possui estilo específico para impressão. Essa opção
+também funciona com `--arquivo` e preserva os mesmos códigos de saída.
+O HTML inclui uma memória de cálculo por caso: fórmula simbólica, substituição
+dos valores, resultado com unidade e legenda dos símbolos. Mostra o ajuste por
+incremento, verificações de limites e filtros, métricas de E e comparação de
+execução em F. Casos recusados antes do dimensionamento não recebem cálculos
+financeiros inventados; candidatas rejeitadas são identificadas explicitamente.
+
+### Salvar relatórios em diretório temporário
+
+Execute o bloco na raiz do projeto, na mesma sessão Bash. `mktemp -d` cria um
+diretório exclusivo no local temporário do sistema (`TMPDIR`, quando definido).
+Cada cenário gera três arquivos; o relatório completo também é salvo nos três
+formatos. Os caminhos entre aspas permitem diretórios com espaços.
+
+```bash
+relatorios_dir=$(mktemp -d)
+
+for cenario in a b c d e f; do
+  python -m riskgate --cenario "$cenario" --formato texto > "$relatorios_dir/cenario-$cenario.txt"
+  python -m riskgate --cenario "$cenario" --formato json > "$relatorios_dir/cenario-$cenario.json"
+  python -m riskgate --cenario "$cenario" --formato html > "$relatorios_dir/cenario-$cenario.html"
+done
+
+python -m riskgate --formato texto > "$relatorios_dir/completo.txt"
+python -m riskgate --formato json > "$relatorios_dir/completo.json"
+python -m riskgate --formato html > "$relatorios_dir/completo.html"
+
+printf 'Relatórios salvos em: %s\n' "$relatorios_dir"
+ls -lh "$relatorios_dir"
+```
+
+Leia os arquivos `.txt` no terminal e abra os `.html` no navegador; os `.json`
+servem para processamento por scripts. Por exemplo, `cat "$relatorios_dir/cenario-c.txt"`
+exibe o relatório C. No Linux com ambiente gráfico, `xdg-open "$relatorios_dir/completo.html"`
+abre o relatório completo no navegador padrão.
+Os arquivos são gravados pelo redirecionamento do shell; a aplicação não cria
+diretórios automaticamente. Copie os relatórios que quiser manter para um local
+permanente, pois o sistema pode limpar o diretório temporário. Executar novamente
+`mktemp -d` cria outro diretório e redefine a variável, preservando o anterior.
+
+### Entradas e códigos de saída
+
 A opção `--cenario` aceita letras minúsculas a–f; é incompatível com `--arquivo`.
+Nos cenários A–D e nas avaliações de E–F, o bloco `entradas` mostra patrimônio,
+saldo livre, exposição atual, preços, taxas, limites, filtros, horários e bloqueios
+efetivamente usados em cada caso, inclusive nas rejeições e erros esperados.
+Em E, cada sessão informa seus limites diário e de drawdown antes das observações;
+cada observação já exibe horário (`observed_at`) e patrimônio (`equity`). Em F,
+as entradas incluem também os preços fictícios executados de compra e venda.
 
 No modo arquivo: código **0** = APROVADA, **2** = REJEITADA por política,
 **1** = arquivo/dados/configuração inválidos. Erros são escritos em stderr.
@@ -43,6 +103,9 @@ retornam 2.
 - `riskgate/metrics.py`: sessão patrimonial em memória, com bloqueios persistentes.
 - `riskgate/jsonio.py`: contrato JSON estrito e leitura de arquivo.
 - `riskgate/presentation.py`: serialização com unidades.
+- `riskgate/reports.py`: relatório em texto e formatação em português.
+- `riskgate/html_report.py`: relatório HTML independente, com estilo de impressão.
+- `riskgate/html_calculations.py`: fórmulas, substituições e legendas do relatório HTML.
 - `riskgate/scenarios.py`: demonstrações determinísticas e verificações A–F.
 - `riskgate/__main__.py`: interface de terminal.
 - `data/exemplos/`: fixtures aprovada, rejeitada e inválida.

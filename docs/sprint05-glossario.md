@@ -18,3 +18,10 @@
 | Aprovação | Decisão sobre um snapshot válido. Não reserva saldo, não envia ordem e não confirma execução. |
 | Snapshot | Retrato externo explícito de patrimônio, saldo, exposição, preço e condições operacionais de uma avaliação. |
 | Nominal mínimo | Menor valor q × E em USDT aceito no exemplo. Uma quantidade não é aumentada para atingi-lo. |
+| Relatório TXT | Visualização detalhada em texto, padrão da CLI ou `--formato texto`. Usa rótulos em português, vírgula decimal, entradas, cálculos e interpretação por caso. |
+| Relatório JSON | Saída estruturada obtida com `--formato json`, para scripts. Usa decimais como strings e unidades explícitas; não é o mesmo contrato JSON de entrada de `--arquivo`. |
+| Relatório HTML | Documento independente obtido com `--formato html`, para abrir no navegador e imprimir ou salvar como PDF. Não exige conexão com a internet. |
+| Memória de cálculo | Seção do HTML com fórmula, valores substituídos e resultado com unidade. Inclui limites e filtros, perda diária/drawdown e comparação da execução fictícia, conforme o caso. |
+| Símbolos nas fórmulas | A legenda de cada memória define letras como P (patrimônio), E (entrada) e q (quantidade). × e ÷ indicam multiplicação e divisão; ≤ e ≥ incluem igualdade; ≈ indica resultado com precisão decimal interna; ⌊z⌋ é o maior inteiro menor ou igual a z. Taxas percentuais são convertidas para frações antes do cálculo. |
+| Diretório temporário | Pasta exclusiva criada com `mktemp -d`; seu caminho fica em uma variável, como `relatorios_dir`. O sistema pode removê-la em uma limpeza; copie arquivos que precisem ser mantidos. |
+| Redirecionamento de saída | O operador `>` do shell grava stdout em um arquivo, criando-o ou substituindo seu conteúdo. Por exemplo, `> "$relatorios_dir/cenario-c.txt"`. Erros enviados a stderr continuam no terminal. |

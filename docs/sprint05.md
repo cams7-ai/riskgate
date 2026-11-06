@@ -24,6 +24,12 @@ O RiskGate é independente dos projetos das etapas anteriores. Utiliza dados loc
 
 Uma aplicação de terminal que retorne aprovação ou rejeição, quantidade, estimativas e motivos verificáveis. Deve demonstrar que uma saída pior que a planejada pode produzir perda superior ao orçamento de risco, sem apresentar o stop como garantia.
 
+A visualização padrão é um relatório detalhado em texto. As opções `--formato json`
+e `--formato html` oferecem, respectivamente, dados estruturados e um relatório
+para navegador e impressão. O [README](../README.md#salvar-relatórios-em-diretório-temporário)
+mostra como criar um diretório com `relatorios_dir=$(mktemp -d)` e salvar os três
+formatos de cada cenário e da execução completa sem gravá-los na raiz do projeto.
+
 ## 3. Prompt autossuficiente de execução
 
 Copie o bloco abaixo para o agente responsável pela implementação. O projeto não depende de documentos ou código das sprints anteriores.
@@ -202,8 +208,29 @@ Implemente:
 - python -m riskgate: todos os cenários em ordem, com sessões isoladas.
 - python -m riskgate --cenario a: seleção a, b, c, d, e ou f.
 - python -m riskgate --arquivo data/exemplos/avaliacao.json: avalia snapshot e configuração locais.
+- --formato texto|json|html: texto detalhado como padrão, JSON para scripts e HTML independente para navegador/impressão. Funciona com cenários e modo arquivo, preservando códigos de saída.
 - python -m riskgate --help.
 - python -m unittest discover -s tests -v.
+
+Nos relatórios, exiba as entradas efetivamente usadas, decisão, motivos, limitadores, cálculos e interpretação por caso. Diferencie uma candidata rejeitada da quantidade aprovada e indique quando o dimensionamento não foi realizado. Em E, mostre limites das sessões e observações patrimoniais; em F, mostre preços da execução fictícia. No HTML, inclua resumo, tabelas, navegação por cenário e estilo de impressão, sem dependências externas. Escape os dados interpolados no HTML.
+Inclua no HTML uma memória de cálculo com fórmula simbólica, substituição numérica, resultado com unidade e legenda das letras e operadores. Explique taxas como frações, ajuste por floor ao incremento e possível redução adicional por revalidação decimal. Exiba desigualdades de risco, exposição, saldo e filtros mínimos, distinguindo condição atendida de não atendida. Em E, apresente perda diária e drawdown sem dividir por uma base diária indisponível; em F, custo, recebimento, perda e comparação com orçamento/planejado. Não calcule dimensionamento para entradas inválidas ou bloqueios anteriores ao cálculo.
+
+Documente a exportação em uma mesma sessão Bash, na raiz do projeto:
+
+```bash
+relatorios_dir=$(mktemp -d)
+for cenario in a b c d e f; do
+  python -m riskgate --cenario "$cenario" --formato texto > "$relatorios_dir/cenario-$cenario.txt"
+  python -m riskgate --cenario "$cenario" --formato json > "$relatorios_dir/cenario-$cenario.json"
+  python -m riskgate --cenario "$cenario" --formato html > "$relatorios_dir/cenario-$cenario.html"
+done
+python -m riskgate --formato texto > "$relatorios_dir/completo.txt"
+python -m riskgate --formato json > "$relatorios_dir/completo.json"
+python -m riskgate --formato html > "$relatorios_dir/completo.html"
+printf 'Relatórios salvos em: %s\n' "$relatorios_dir"
+```
+
+Explique que mktemp cria um diretório exclusivo no local temporário do sistema, os arquivos são escritos pelo redirecionamento do shell e devem ser copiados para um local permanente caso precisem ser mantidos. Não confunda .txt de saída com contrato JSON de entrada.
 
 Documente contrato JSON versionado com schema_version inteiro 1, decimais como strings, booleanos reais e datas ISO com fuso. Rejeite JSON malformado, chaves duplicadas, campos inesperados/ausentes, versões diferentes e constantes NaN/Infinity. Não aceite bool como versão.
 
@@ -223,6 +250,7 @@ Confira os valores exatos de A/B/C/F com Decimal. Teste mínimos e limites na ig
 Teste rejeições sem mutação, precedência, preço desatualizado, datas com/sem fuso, virada UTC, bloqueios persistentes e série patrimonial inválida. Verifique o contexto decimal externo preservado e resultados estáveis quando a precisão externa variar.
 
 Execute todos os cenários juntos e separados, ajuda, modo arquivo aprovado/rejeitado/inválido e unittest. Corrija falhas. Não apresente resultado esperado como se fosse execução real.
+Confira os três formatos de relatório e a exportação para diretório temporário: seis cenários e execução completa devem produzir 21 arquivos não vazios, sendo sete de cada formato. Verifique conteúdo, JSON válido e códigos de saída; rejeições e erros esperados não devem aparecer como falhas do teste no relatório HTML.
 
 Finalize informando arquivos criados, comandos executados, resultados, limitações e pendências reais. Não faça commits, publicação ou ações externas sem solicitação.
 ````

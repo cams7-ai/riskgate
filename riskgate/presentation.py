@@ -21,7 +21,7 @@ def measured(value, unit):
 
 
 def decision_dict(decision: Decision):
-    sizing = None
+    sizing = None # Detalhes dos cálculos usados para dimensionar a compra.
     if decision.sizing is not None:
         sizing = {name: measured(getattr(decision.sizing, name), unit)
                   for name, unit in SIZING_UNITS.items()}

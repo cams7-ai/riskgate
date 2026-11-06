@@ -22,12 +22,43 @@ def check(condition, message):
         raise RuntimeError(f"Cenário falhou: {message}")
 
 
+def evaluation_inputs(config, snapshot):
+    """Premissas efetivamente usadas em cada avaliação, inclusive casos inválidos."""
+    return {
+        "patrimonio": measured(snapshot.equity, "USDT"),
+        "saldo_livre": measured(snapshot.free_balance, "USDT"),
+        "exposicao_atual": measured(snapshot.exposure, "USDT"),
+        "preco_entrada": measured(snapshot.entry_price, "USDT/BTC"),
+        "saida_planejada": measured(snapshot.planned_exit, "USDT/BTC"),
+        "taxa_compra": measured(config.buy_fee * D("100"), "%"),
+        "taxa_venda": measured(config.sell_fee * D("100"), "%"),
+        "limite_risco": measured(config.risk_fraction * D("100"), "%"),
+        "limite_exposicao": measured(config.exposure_fraction * D("100"), "%"),
+        "incremento_quantidade": measured(config.step, "BTC"),
+        "quantidade_minima": measured(config.min_quantity, "BTC"),
+        "valor_nominal_minimo": measured(config.min_notional, "USDT"),
+        "idade_maxima_preco": measured(config.max_price_age_seconds, "s"),
+        "horario_preco": snapshot.price_at,
+        "horario_avaliacao": snapshot.evaluated_at,
+        "posicao": snapshot.position.value,
+        "intencao_pendente": snapshot.pending_intent,
+        "ordem_desconhecida": snapshot.unknown_order,
+        "bloqueio_diario": snapshot.daily_blocked,
+        "bloqueio_drawdown": snapshot.drawdown_blocked,
+        "bloqueio_manual": snapshot.manual_blocked,
+    }
+
+
+def evaluation_result(config, snapshot, decision):
+    return {"entradas": evaluation_inputs(config, snapshot), **decision_dict(decision)}
+
+
 def case(config, snapshot, expected, label):
     before = snapshot
     decision = evaluate(config, snapshot)
     check(decision.reason == expected, label)
     check(snapshot == before, "snapshot alterado")
-    return {"caso": label, **decision_dict(decision)}
+    return {"caso": label, **evaluation_result(config, snapshot, decision)}
 
 
 def invalid(config, snapshot, label):
@@ -36,7 +67,8 @@ def invalid(config, snapshot, label):
         evaluate(config, snapshot)
     except ValidationError as exc:
         check(snapshot == before, "snapshot alterado após erro")
-        return {"caso": label, "erro_esperado": str(exc)}
+        return {"caso": label, "entradas": evaluation_inputs(config, snapshot),
+                "erro_esperado": str(exc)}
     raise RuntimeError(f"Cenário falhou: dados inválidos aceitos: {label}")
 
 
@@ -49,18 +81,19 @@ def scenario_a():
            z.planned_proceeds, z.estimated_loss, z.resulting_exposure) ==
           tuple(map(D, ("10", "2198", "200", "0.2", "200.2", "195.804", "4.396", "200"))), "valores A")
     check(z.limiters == ("exposicao",), "limitador A")
-    return [decision_dict(d)]
+    return [evaluation_result(c, s, d)]
 
 
 def scenario_b():
     c, s = baseline()
-    d = evaluate(replace(c, exposure_fraction=D("1")), s)
+    c = replace(c, exposure_fraction=D("1"))
+    d = evaluate(c, s)
     check(d.approved_quantity == D("0.004549"), "quantidade B")
     check((d.sizing.outlay, d.sizing.estimated_loss, d.sizing.notional) ==
           (D("455.3549"), D("9.998702"), D("454.9")), "valores B")
     check(d.sizing.limiters == ("risco",), "limitador B")
     check((d.approved_quantity + c.step) * d.sizing.loss_per_btc > d.sizing.risk_budget, "arredondar para cima excederia risco")
-    return [decision_dict(d), {"observacao": "O próximo incremento ultrapassaria o orçamento de 10 USDT."}]
+    return [evaluation_result(c, s, d), {"observacao": "O próximo incremento ultrapassaria o orçamento de 10 USDT."}]
 
 
 def scenario_c():
@@ -70,7 +103,7 @@ def scenario_c():
     check((d.approved_quantity, d.sizing.outlay, d.sizing.estimated_loss) ==
           (D("0.000999"), D("99.9999"), D("2.195802")), "valores C")
     check(d.sizing.limiters == ("saldo",), "limitador C")
-    return [decision_dict(d),
+    return [evaluation_result(c, s, d),
             case(c, replace(s, free_balance=D("0")), Reason.BALANCE, "saldo zero"),
             case(replace(c, min_quantity=D("0.001")), s, Reason.MINIMUM, "abaixo do mínimo"),
             case(replace(c, step=D("0.000003")), s, Reason.APPROVED, "incremento 0.000003 BTC")]
@@ -102,8 +135,12 @@ def scenario_d():
 
 
 def scenario_e():
-    result = []
-    session = EquitySession(D("3"), D("5"))
+    daily_limit, drawdown_limit = D("3"), D("5")
+    result = [{"sessao": "drawdown", "entradas": {
+        "limite_diario": measured(daily_limit, "%"),
+        "limite_drawdown": measured(drawdown_limit, "%"),
+    }}]
+    session = EquitySession(daily_limit, drawdown_limit)
     for offset, equity in enumerate(("1000", "1050", "990", "1020")):
         m = session.observe(NOW + timedelta(hours=offset), D(equity))
         result.append({"sessao": "drawdown", **metrics_dict(m)})
@@ -118,7 +155,12 @@ def scenario_e():
     m = session.observe(NOW + timedelta(days=1), D("1060"))
     check(m.drawdown_blocked and not m.daily_blocked, "drawdown persiste na virada UTC")
     result.append({"sessao": "drawdown no dia seguinte", **metrics_dict(m)})
-    daily = EquitySession(D("3"), D("20"))
+    daily_limit, drawdown_limit = D("3"), D("20")
+    result.append({"sessao": "diario", "entradas": {
+        "limite_diario": measured(daily_limit, "%"),
+        "limite_drawdown": measured(drawdown_limit, "%"),
+    }})
+    daily = EquitySession(daily_limit, drawdown_limit)
     for offset, equity in enumerate(("1000", "970", "1000")):
         m = daily.observe(NOW + timedelta(hours=offset), D(equity))
         result.append({"sessao": "diario", **metrics_dict(m)})
@@ -131,12 +173,16 @@ def scenario_e():
     check(m.drawdown_percent == D("100") and m.daily_blocked and m.drawdown_blocked, "patrimônio zero")
     result.append({"sessao": "patrimônio zero", **metrics_dict(m)})
     check(daily.observe(m.observed_at, D("0")) is m, "duplicata ignorada")
-    result.append({"duplicata": "ignorada, sem alteração"})
+    result.append({"sessao": "diario", "entradas": {
+        "horario_observacao": m.observed_at, "patrimonio": measured(D("0"), "USDT"),
+    }, "duplicata": "ignorada, sem alteração"})
     try:
         daily.observe(NOW, D("1000"))
     except ValidationError as exc:
         check(daily.current is m, "evento fora de ordem alterou métricas")
-        result.append({"erro_esperado": str(exc)})
+        result.append({"sessao": "diario", "entradas": {
+            "horario_observacao": NOW, "patrimonio": measured(D("1000"), "USDT"),
+        }, "erro_esperado": str(exc)})
     else:
         raise RuntimeError("Evento fora de ordem foi aceito")
     return result
@@ -144,11 +190,18 @@ def scenario_e():
 
 def scenario_f():
     c, s = baseline()
-    d = evaluate(replace(c, exposure_fraction=D("1")), s)
-    actual = compare_execution(d.approved_quantity, D("100000"), D("97000"), c.buy_fee, c.sell_fee)
+    c = replace(c, exposure_fraction=D("1"))
+    d = evaluate(c, s)
+    buy_price, sell_price = D("100000"), D("97000")
+    actual = compare_execution(d.approved_quantity, buy_price, sell_price, c.buy_fee, c.sell_fee)
     check((actual.purchase_cost, actual.net_sale, actual.realized_loss) ==
           (D("455.3549"), D("440.811747"), D("14.543153")), "valores F")
-    return [{"quantidade": measured(actual.quantity, "BTC"),
+    return [{"entradas": {
+                 **evaluation_inputs(c, s),
+                 "preco_compra_executado_ficticio": measured(buy_price, "USDT/BTC"),
+                 "preco_venda_executado_ficticio": measured(sell_price, "USDT/BTC"),
+             },
+             "quantidade": measured(actual.quantity, "BTC"),
              "custo_compra": measured(actual.purchase_cost, "USDT"),
              "recebimento_venda": measured(actual.net_sale, "USDT"),
              "perda_realizada_ficticia": measured(actual.realized_loss, "USDT"),
